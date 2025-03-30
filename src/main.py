@@ -1,11 +1,13 @@
-from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel
-from openai import OpenAI
-from dotenv import load_dotenv
-import os
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from .routes import message, reviews
+from .database import init_db, close_db
+from .config import API_BASE_URL
+import logging
 
-# Load environment variables
-load_dotenv()
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 # Initialize FastAPI app
 app = FastAPI(
@@ -14,48 +16,46 @@ app = FastAPI(
     version="1.0.0"
 )
 
-# Initialize OpenAI client with optional API key
-api_key = os.getenv("OPENAI_API_KEY")
-client = OpenAI(api_key=api_key) if api_key else None
+# Configure CORS
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # Allows all origins
+    allow_credentials=True,
+    allow_methods=["*"],  # Allows all methods
+    allow_headers=["*"],  # Allows all headers
+)
 
-class MessageRequest(BaseModel):
-    profile: str
-    message: str
+# Store database pool and API base URL
+app.state.db_pool = None
+app.state.api_base_url = API_BASE_URL
 
-class MessageResponse(BaseModel):
-    response: str
+# Include routers
+app.include_router(message.router)
+app.include_router(reviews.router)
 
-@app.post("/get_message_response", response_model=MessageResponse)
-async def get_message_response(request: MessageRequest):
+@app.on_event("startup")
+async def startup():
+    logger.info("Starting application...")
     try:
-        if not client:
-            raise HTTPException(
-                status_code=500,
-                detail="OpenAI API key not configured. Please set OPENAI_API_KEY environment variable."
-            )
-            
-        # Create the system message with the personality profile
-        system_message = f"You are an AI assistant with the following personality profile: {request.profile}"
-        
-        # Make the API call to OpenAI
-        response = client.chat.completions.create(
-            model="gpt-3.5-turbo",
-            messages=[
-                {"role": "system", "content": system_message},
-                {"role": "user", "content": request.message}
-            ],
-            temperature=0.7,
-            max_tokens=500
-        )
-        
-        # Extract the response
-        ai_response = response.choices[0].message.content
-        
-        return MessageResponse(response=ai_response)
-    
+        app.state.db_pool = await init_db()
+        logger.info("Database initialized successfully")
+        if app.state.db_pool:
+            logger.info("Database pool is available")
+        else:
+            logger.error("Database pool is None after initialization")
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"Error during startup: {str(e)}")
+        raise
+
+@app.on_event("shutdown")
+async def shutdown():
+    logger.info("Shutting down application...")
+    await close_db()
+    logger.info("Application shutdown complete")
 
 @app.get("/")
 async def root():
-    return {"message": "Welcome to the Message Response API"} 
+    return {
+        "message": "Welcome to the Message Response API",
+        "api_base_url": app.state.api_base_url
+    } 
