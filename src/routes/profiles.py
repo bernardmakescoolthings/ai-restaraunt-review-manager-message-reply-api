@@ -26,11 +26,17 @@ class ProfileResponse(BaseModel):
     profile_text_base: str
     profile_text_addon: str
 
-@router.get("/fetch_profiles", response_model=List[ProfileResponse])
+class ProfileListResponse(BaseModel):
+    id: int
+    profile_name: str
+    profile_text_addon: str
+
+@router.get("/fetch_profiles", response_model=List[ProfileListResponse])
 async def fetch_profiles(req: Request):
     """
     Fetch all profiles from the database.
     Returns a list of all profiles with their complete information.
+    Note: profile_text_base is excluded from the response.
     """
     try:
         db_pool = req.app.state.db_pool
@@ -43,7 +49,7 @@ async def fetch_profiles(req: Request):
 
         async with db_pool.acquire() as conn:
             profiles = await conn.fetch("""
-                SELECT id, profile_name, profile_text_base, profile_text_addon 
+                SELECT id, profile_name, profile_text_addon 
                 FROM profiles
                 ORDER BY id
             """)
@@ -69,7 +75,7 @@ async def add_profiles(profile: ProfileInput, req: Request):
             )
 
         # Set the profile_text_base value
-        profile_text_base = "You are a friendly customer service representative for [Business Name] known for your warm, empathetic approach. When replying to a negative review, keep your response brief (2–3 sentences). Acknowledge the customer's feelings, offer a sincere apology, and invite them to reach out for further assistance—all while maintaining a respectful, conversational tone."
+        profile_text_base = "You are a friendly customer service representative known for your warm, empathetic approach. When replying to a negative review, keep your response brief (2–3 sentences). Acknowledge the customer's feelings, offer a sincere apology, and invite them to reach out for further assistance—all while maintaining a respectful, conversational tone."
         
         async with db_pool.acquire() as conn:
             profile_id = await conn.fetchval("""
@@ -167,4 +173,45 @@ async def update_profile(profile_id: int, profile: ProfileUpdateInput, req: Requ
         raise
     except Exception as e:
         logger.error(f"Error updating profile: {str(e)}")
-        raise HTTPException(status_code=500, detail="Failed to update profile") 
+        raise HTTPException(status_code=500, detail="Failed to update profile")
+
+@router.delete("/delete_profile/{profile_id}")
+async def delete_profile(profile_id: int, req: Request):
+    """
+    Delete a profile from the database.
+    Takes a profile ID and removes the corresponding profile.
+    Returns a success message if the profile was deleted.
+    """
+    try:
+        db_pool = req.app.state.db_pool
+        if not db_pool:
+            logger.error("Database connection pool not available")
+            raise HTTPException(
+                status_code=503,
+                detail="Database service unavailable"
+            )
+
+        async with db_pool.acquire() as conn:
+            # First check if the profile exists
+            existing_profile = await conn.fetchrow("""
+                SELECT id FROM profiles WHERE id = $1
+            """, profile_id)
+            
+            if not existing_profile:
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"Profile with ID {profile_id} not found"
+                )
+
+            # Delete the profile
+            await conn.execute("""
+                DELETE FROM profiles WHERE id = $1
+            """, profile_id)
+            
+            return {"message": f"Profile with ID {profile_id} was successfully deleted"}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error deleting profile: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to delete profile") 

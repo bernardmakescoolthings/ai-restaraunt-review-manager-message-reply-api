@@ -23,7 +23,7 @@ api_key = os.getenv("OPENAI_API_KEY")
 client = OpenAI(api_key=api_key) if api_key else None
 
 class MessageRequest(BaseModel):
-    profile: str
+    profile_id: int
     message_id: str
 
 class MessageResponse(BaseModel):
@@ -47,9 +47,27 @@ async def get_message_response(request: MessageRequest, req: Request):
                 detail="Database service unavailable"
             )
 
-        # Fetch message from database
+        # Fetch profile and message from database
         try:
             async with db_pool.acquire() as connection:
+                # First fetch the profile
+                profile_query = """
+                    SELECT profile_text_base, profile_text_addon
+                    FROM profiles
+                    WHERE id = $1
+                """
+                profile_row = await connection.fetchrow(profile_query, request.profile_id)
+                
+                if not profile_row:
+                    raise HTTPException(
+                        status_code=404,
+                        detail=f"Profile with ID {request.profile_id} not found"
+                    )
+                
+                # Combine profile texts with a newline
+                profile_text = f"{profile_row['profile_text_base']}\n{profile_row['profile_text_addon']}"
+                
+                # Then fetch the message
                 message_query = """
                     SELECT caption as message
                     FROM reviews
@@ -65,14 +83,14 @@ async def get_message_response(request: MessageRequest, req: Request):
                 
                 message_content = message_row['message']
         except asyncpg.PostgresError as e:
-            logger.error(f"Database error while fetching review: {str(e)}")
+            logger.error(f"Database error while fetching data: {str(e)}")
             raise HTTPException(
                 status_code=500,
                 detail=f"Database error: {str(e)}"
             )
             
         # Create the system message with the personality profile
-        system_message = f"You are an AI assistant with the following personality profile: {request.profile}"
+        system_message = f"You are an AI assistant with the following personality profile: {profile_text}"
         
         # Make the API call to OpenAI
         response = client.chat.completions.create(
