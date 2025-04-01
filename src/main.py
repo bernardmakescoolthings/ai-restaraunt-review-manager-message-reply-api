@@ -1,12 +1,24 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from .routes import message, reviews
+from .routes import message, reviews, profiles
 from .database import init_db, close_db
 from .config import API_BASE_URL
 import logging
+import os
 
 # Configure logging
-logging.basicConfig(level=logging.INFO)
+log_directory = "logs"
+if not os.path.exists(log_directory):
+    os.makedirs(log_directory)
+
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler(os.path.join(log_directory, 'app.log')),
+        logging.StreamHandler()  # This will still show logs in console
+    ]
+)
 logger = logging.getLogger(__name__)
 
 # Initialize FastAPI app
@@ -32,6 +44,7 @@ app.state.api_base_url = API_BASE_URL
 # Include routers
 app.include_router(message.router)
 app.include_router(reviews.router)
+app.include_router(profiles.router)
 
 @app.on_event("startup")
 async def startup():
