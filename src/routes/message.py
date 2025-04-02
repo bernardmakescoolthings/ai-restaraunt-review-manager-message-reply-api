@@ -67,9 +67,9 @@ async def get_message_response(request: MessageRequest, req: Request):
                 # Combine profile texts with a newline
                 profile_text = f"{profile_row['profile_text_base']}\n{profile_row['profile_text_addon']}"
                 
-                # Then fetch the message
+                # Then fetch the message and username
                 message_query = """
-                    SELECT caption as message
+                    SELECT caption as message, username
                     FROM reviews
                     WHERE id_review = $1
                 """
@@ -81,7 +81,7 @@ async def get_message_response(request: MessageRequest, req: Request):
                         detail=f"Review with ID {request.message_id} not found"
                     )
                 
-                message_content = message_row['message']
+                message_content = f"{message_row['message']} - sent by {message_row['username'].split(' ')[0]}"
         except asyncpg.PostgresError as e:
             logger.error(f"Database error while fetching data: {str(e)}")
             raise HTTPException(

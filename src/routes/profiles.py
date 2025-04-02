@@ -75,7 +75,7 @@ async def add_profiles(profile: ProfileInput, req: Request):
             )
 
         # Set the profile_text_base value
-        profile_text_base = "You are a friendly customer service representative known for your warm, empathetic approach. When replying to a negative review, keep your response brief (2–3 sentences). Acknowledge the customer's feelings, offer a sincere apology, and invite them to reach out for further assistance—all while maintaining a respectful, conversational tone."
+        profile_text_base = "You are a friendly customer service representative known for your warm, empathetic approach. When replying to a negative review, keep your response brief (2–3 sentences). Acknowledge the customer's feelings, offer a sincere apology, and invite them to reach out for further assistance—all while maintaining a respectful, conversational tone. Please ensure you follow the directions given to you."
         
         async with db_pool.acquire() as conn:
             profile_id = await conn.fetchval("""
