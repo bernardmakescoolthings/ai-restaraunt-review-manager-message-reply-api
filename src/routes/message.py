@@ -67,11 +67,11 @@ async def get_message_response(request: MessageRequest, req: Request):
                 # Combine profile texts with a newline
                 profile_text = f"{profile_row['profile_text_base']}\n{profile_row['profile_text_addon']}"
                 
-                # Then fetch the message and username
+                # Then fetch the message, username, and rating
                 message_query = """
-                    SELECT caption as message, username
+                    SELECT review_text as message, author_title as username, review_rating as rating
                     FROM reviews
-                    WHERE id_review = $1
+                    WHERE review_id = $1
                 """
                 message_row = await connection.fetchrow(message_query, request.message_id)
                 
@@ -81,7 +81,7 @@ async def get_message_response(request: MessageRequest, req: Request):
                         detail=f"Review with ID {request.message_id} not found"
                     )
                 
-                message_content = f"{message_row['message']} - sent by {message_row['username'].split(' ')[0]}"
+                message_content = f"{message_row['message']} - sent by {message_row['username'].split(' ')[0]} who gave a rating of {message_row['rating']} stars"
         except asyncpg.PostgresError as e:
             logger.error(f"Database error while fetching data: {str(e)}")
             raise HTTPException(
@@ -112,7 +112,7 @@ async def get_message_response(request: MessageRequest, req: Request):
                 update_query = """
                     UPDATE reviews
                     SET replies = $1
-                    WHERE id_review = $2
+                    WHERE review_id = $2
                 """
                 await connection.execute(update_query, ai_response, request.message_id)
                 logger.info(f"Successfully saved response for review {request.message_id}")

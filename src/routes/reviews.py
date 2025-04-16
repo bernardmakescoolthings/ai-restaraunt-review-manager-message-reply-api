@@ -14,23 +14,23 @@ router = APIRouter(
 )
 
 class BusinessReviewRequest(BaseModel):
-    business_username: str
+    business_place_id: str
 
 class Review(BaseModel):
     id: int
-    id_review: str
+    review_id: str
     username: str
     rating: float
-    timestamp: datetime
+    timestamp: datetime | None
     review_text: str
-    business_username: str
+    business_place_id: str
     n_review_user: int
     replies: str | None
-    relative_date: str | None
+    review_timestamp: int | None
     url_user: str | None
 
 class BusinessReviewResponse(BaseModel):
-    business_username: str
+    business_place_id: str
     reviews: list[Review]
     total_reviews: int
     average_rating: float
@@ -46,46 +46,46 @@ async def fetch_reviews(request: BusinessReviewRequest, req: Request):
                 detail="Database service unavailable"
             )
 
-        logger.info(f"Fetching reviews for business username: {request.business_username}")
+        logger.info(f"Fetching reviews for business place ID: {request.business_place_id}")
         try:
             async with db_pool.acquire() as connection:
                 # Fetch reviews for the business
                 reviews_query = """
                     SELECT 
                         id,
-                        id_review,
-                        username,
-                        rating,
-                        timestamp,
-                        caption,
-                        business_username,
-                        n_review_user,
+                        review_id,
+                        author_title as username,
+                        review_rating as rating,
+                        review_datetime_utc as timestamp,
+                        review_text,
+                        business_place_id,
+                        author_reviews_count as n_review_user,
                         replies,
-                        relative_date,
-                        url_user
+                        review_timestamp,
+                        author_link as url_user
                     FROM reviews
-                    WHERE business_username = $1
-                    ORDER BY timestamp DESC
+                    WHERE business_place_id = $1
+                    ORDER BY review_datetime_utc DESC
                 """
                 
                 # Get review statistics
                 stats_query = """
                     SELECT 
                         COUNT(*) as total_reviews,
-                        AVG(rating) as average_rating
+                        AVG(review_rating) as average_rating
                     FROM reviews
-                    WHERE business_username = $1
+                    WHERE business_place_id = $1
                 """
                 
                 # Execute both queries
-                reviews = await connection.fetch(reviews_query, request.business_username)
-                stats = await connection.fetchrow(stats_query, request.business_username)
+                reviews = await connection.fetch(reviews_query, request.business_place_id)
+                stats = await connection.fetchrow(stats_query, request.business_place_id)
                 
                 logger.info(f"Found {len(reviews)} reviews for the business")
                 
                 if not reviews:
                     return BusinessReviewResponse(
-                        business_username=request.business_username,
+                        business_place_id=request.business_place_id,
                         reviews=[],
                         total_reviews=0,
                         average_rating=0.0
@@ -95,22 +95,22 @@ async def fetch_reviews(request: BusinessReviewRequest, req: Request):
                 review_list = [
                     Review(
                         id=row['id'],
-                        id_review=row['id_review'],
+                        review_id=row['review_id'],
                         username=row['username'],
                         rating=float(row['rating']),
                         timestamp=row['timestamp'],
-                        review_text=row['caption'] if row['caption'] is not None else "",
-                        business_username=row['business_username'],
+                        review_text=row['review_text'] if row['review_text'] is not None else "",
+                        business_place_id=row['business_place_id'],
                         n_review_user=row['n_review_user'],
                         replies=row['replies'],
-                        relative_date=row['relative_date'],
+                        review_timestamp=row['review_timestamp'],
                         url_user=row['url_user']
                     )
                     for row in reviews
                 ]
                 
                 return BusinessReviewResponse(
-                    business_username=request.business_username,
+                    business_place_id=request.business_place_id,
                     reviews=review_list,
                     total_reviews=stats['total_reviews'],
                     average_rating=float(stats['average_rating']) if stats['average_rating'] is not None else 0.0
